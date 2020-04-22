@@ -11,9 +11,9 @@ import random
 from libs.pascal_voc_io import PascalVocReader,PascalVocWriter
 
 
-IN_DIR = "F:/dataset/4K/"
-TRAIN_OUT_DIR = "F:/dataset/train/"
-VALID_OUT_DIR = "F:/dataset/valid/"
+IN_DIR = "F:/dataset/4K/A-10"
+TRAIN_OUT_DIR = "F:/dataset/pose-train/"
+VALID_OUT_DIR = "F:/dataset/pose-valid/"
 
 PX_OUTSIZE = 512
 PX_MINSIZE = 20
@@ -22,7 +22,12 @@ MIN_SCALE = 0.01
 ARGUMENTATION = 10
 TRAIN_RATIO = 0.8
 
-def scaleAndOffset(src, xmin,ymin,xmax,ymax,outPath,className):
+
+USE_KEYPOINT = True
+
+
+
+def scaleAndOffset(src, xmin,ymin,xmax,ymax,outPath,shapes):
     width = xmax-xmin
     height = ymax-ymin
     #######################
@@ -45,7 +50,7 @@ def scaleAndOffset(src, xmin,ymin,xmax,ymax,outPath,className):
         scale = 1.0
     
     
-    dst = cv2.resize(src,dsize=None,fx=scale,fy=scale)
+    dst = cv2.resize(src,dsize=None,fx=scale,fy=scale)    
     
     #######################
     # offset
@@ -76,20 +81,23 @@ def scaleAndOffset(src, xmin,ymin,xmax,ymax,outPath,className):
     
     dst = dst[top:top+PX_OUTSIZE,left:left+PX_OUTSIZE]
     
-    outXmin = int(PX_OUTSIZE/2-width*scale/2-offsetX)
-    outYmin = int(PX_OUTSIZE/2-height*scale/2-offsetY)
-    outXmax = int(PX_OUTSIZE/2+width*scale/2-offsetX)
-    outYmax = int(PX_OUTSIZE/2+height*scale/2-offsetY)
-    
-    
-    cv2.imwrite(outPath,dst)
-    
     foldername = os.path.basename(os.path.dirname(outPath))
     filename = os.path.basename(outPath)
     imgSize = (PX_OUTSIZE,PX_OUTSIZE)
-    
     xmlWriter = PascalVocWriter(foldername,filename,imgSize,localImgPath=outPath)
-    xmlWriter.addBndBox(outXmin,outYmin,outXmax,outYmax,className,0)
+    
+    for i in range(len(shapes)):
+        outXmin = int(shapes[i][1][0][0]*scale - left)
+        outYmin = int(shapes[i][1][0][1]*scale - top)
+        outXmax = int(shapes[i][1][2][0]*scale - left)
+        outYmax = int(shapes[i][1][2][1]*scale - top)
+        
+        
+        xmlWriter.addBndBox(outXmin,outYmin,outXmax,outYmax,shapes[i][0],0)
+    
+    cv2.imwrite(outPath,dst)
+    
+    
     xmlWriter.save(outPath[:-4]+".xml")
     
 #     cv2.rectangle(dst,(outXmin,outYmin),(outXmax,outYmax),(255,0,0))
@@ -115,7 +123,7 @@ def scaleAndOffset(src, xmin,ymin,xmax,ymax,outPath,className):
 if __name__ == "__main__":
     random.seed(1)
     
-    filenames = sorted(glob.glob(IN_DIR+"/**/*.png"))
+    filenames = sorted(glob.glob(IN_DIR+"/*.png"))
     
     
     count = 0
@@ -134,21 +142,30 @@ if __name__ == "__main__":
         xmlReader = PascalVocReader(xmlName)
         shapes = xmlReader.getShapes()
         
-        xmin = shapes[0][1][0][0]
-        ymin = shapes[0][1][0][1]
-        xmax = shapes[0][1][2][0]
-        ymax = shapes[0][1][2][1]
-        className = shapes[0][0]
-        #className = "aircraft"
+        xmin = src.shape[1]
+        ymin = src.shape[0]
+        xmax = 0
+        ymax = 0
+        
+        for i in range(len(shapes)):
+            if(xmin > shapes[i][1][0][0]):
+                xmin = shapes[i][1][0][0]
+            if(ymin > shapes[i][1][0][1]):
+                ymin = shapes[i][1][0][1]
+            if(xmax < shapes[i][1][2][0]):
+                xmax = shapes[i][1][2][0]
+            if(ymax < shapes[i][1][2][1]):
+                ymax = shapes[i][1][2][1]
+            #className = "aircraft"
         
         print(dirname)
         print(basename)
         
         if(random.uniform(0.0,1.0) < TRAIN_RATIO):
             for i in range(ARGUMENTATION):
-                scaleAndOffset(src, xmin, ymin, xmax, ymax, TRAIN_OUT_DIR+dirname+"/"+basename[:-4]+"_"+str(i)+".jpg",className)
+                scaleAndOffset(src, xmin, ymin, xmax, ymax, TRAIN_OUT_DIR+dirname+"/"+basename[:-4]+"_"+str(i)+".jpg",shapes)
         else:    
-            scaleAndOffset(src, xmin, ymin, xmax, ymax, VALID_OUT_DIR+dirname+"/"+basename[:-4]+".jpg",className)
+            scaleAndOffset(src, xmin, ymin, xmax, ymax, VALID_OUT_DIR+dirname+"/"+basename[:-4]+".jpg",shapes)
         
 #         count+=1
 #         if(count > 20):
